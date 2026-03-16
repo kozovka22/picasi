@@ -16,6 +16,9 @@ import (
 	obm "github.com/tardigrade-sw/OBM" //by kryštof fabel :3
 )
 
+// get ready for spaghetti :P
+// s gočkem fakt neumim
+
 type Server struct {
 	sessions map[string]time.Time
 	mu       sync.RWMutex
@@ -369,7 +372,6 @@ func (s *Server) ListLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Nejdůležitější logy nahoře (reverse order)
 	for i, j := 0, len(allLogs)-1; i < j; i, j = i+1, j-1 {
 		allLogs[i], allLogs[j] = allLogs[j], allLogs[i]
 	}
