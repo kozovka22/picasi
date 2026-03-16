@@ -1,6 +1,6 @@
 import CommentForm from './CommentForm.jsx'
 
-export default function CommentSection({ commentsData, loading, error, onRefresh, page, onPageChange }) {
+export default function CommentSection({ commentsData, loading, error, onRefresh, page, onPageChange, isAdmin, onToggleHide }) {
 
   const list = Array.isArray(commentsData) ? commentsData : (commentsData?.data || []);
 
@@ -21,7 +21,7 @@ export default function CommentSection({ commentsData, loading, error, onRefresh
             </div>
           <ul>
             {list.map(c => (
-              <li className="comment-card" key={c.id}>
+              <li className={`comment-card ${c.hidden ? 'comment-hidden' : ''}`} key={c.id}>
                 {c.weatherInfo && (
                   <div className="comment-data">
                     <div className="comment-weather">
@@ -40,6 +40,14 @@ export default function CommentSection({ commentsData, loading, error, onRefresh
                     <div className="comment-content">
                       <strong>{c.author}</strong> · <span>{c.created_at}</span> · <span>{c.weatherInfo.location}</span>
                       <p>{c.content}</p> 
+                      {isAdmin && (
+                        <button 
+                          onClick={() => onToggleHide(c.id)}
+                          style={{ marginTop: '0.5rem', background: c.hidden ? '#4ade80' : '#f87171' }}
+                        >
+                          {c.hidden ? 'Unhide' : 'Hide'}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

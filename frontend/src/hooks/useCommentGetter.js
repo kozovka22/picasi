@@ -10,10 +10,20 @@ export const useCommentGetter = (initialPage = 1) => {
     setLoading(true)
     setError(null)
     try {
+      const token = sessionStorage.getItem('adminToken')
+      const isAdmin = token ? true : false
       const apiUrl = import.meta.env.VITE_API_URL
-      const url = `${apiUrl}/api/comment/list?page=${encodeURIComponent(p)}`
-      const res = await fetch(url)
-      if (!res.ok) throw new Error('Neodpověď :(')
+      const url = `${apiUrl}/api/comment/list?page=${encodeURIComponent(p)}${isAdmin ? '&admin=true' : ''}`
+      const headers = {}
+      if (isAdmin) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+      
+      const res = await fetch(url, { headers })
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        throw new Error(`Neodpověď :( Status: ${res.status} ${text}`)
+      }
       const json = await res.json()
       setData(json)
     } catch (e) {

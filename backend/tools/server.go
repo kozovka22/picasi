@@ -6,28 +6,155 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"picasi/types"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	obm "github.com/tardigrade-sw/OBM" //by kryštof fabel :3
 )
 
 type Server struct {
+	sessions map[string]time.Time
+	mu       sync.RWMutex
 }
 
 func NewServer() *Server {
-	return &Server{}
+	return &Server{
+		sessions: make(map[string]time.Time),
+	}
 }
 
+// Validace tokenu
+func (s *Server) IsAdmin(r *http.Request) bool {
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		return false
+	}
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+
+	s.mu.RLock()
+	expiry, exists := s.sessions[token]
+	s.mu.RUnlock()
+
+	if !exists || time.Now().After(expiry) {
+		return false
+	}
+	return true
+}
+
+// Inicializace API routes
 func (s *Server) Serve(addr string) error {
 	http.HandleFunc("/api/comment/new", s.NewComment)
 	http.HandleFunc("/api/comment/list", s.ListComments)
+	http.HandleFunc("/api/comment/toggle-hide", s.ToggleHideComment)
+	http.HandleFunc("/api/login", s.Login)
 
 	fmt.Printf("Listening on %s", addr)
 	return http.ListenAndServe(addr, nil)
 }
 
+// Schovávání komentářů
+func (s *Server) ToggleHideComment(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Add("Access-Control-Allow-Origin", "*")
+	w.Header().Add("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if !s.IsAdmin(r) {
+		fmt.Printf("DEBUG: Auth failed for %s. Header: %s\n", r.URL.Path, r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		fmt.Printf("DEBUG: Missing ID in query params\n")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	fmt.Printf("DEBUG: Toggling comment ID: %s\n", id)
+
+	// Fetch z databáze
+	var raw string
+	err := obm.Find(obm.DBS["picasi.db"], "comments", id, &raw)
+	if err != nil {
+		fmt.Printf("DEBUG: OBM Find failed for ID %s: %v\n", id, err)
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	var comment types.Comment
+	if err := json.Unmarshal([]byte(raw), &comment); err != nil {
+		fmt.Printf("DEBUG: JSON Unmarshal failed: %v\n", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	comment.Hidden = !comment.Hidden
+	updatedPayload, _ := json.Marshal(comment)
+
+	// Uložení do databáze
+	err = obm.Save(obm.DBS["picasi.db"], "comments", id, updatedPayload)
+	if err != nil {
+		fmt.Printf("DEBUG: OBM Save failed: %v\n", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Printf("DEBUG: Successfully toggled comment ID %s to hidden=%v\n", id, comment.Hidden)
+	json.NewEncoder(w).Encode(types.StdResponse{Success: true, Message: "Toggled status"})
+}
+
+// Login z usernamu root (později dodělat admin management)
+func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Add("Access-Control-Allow-Origin", "*")
+	w.Header().Add("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Add("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	var credentials struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&credentials)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Jednoduché ověření hesla z .env
+	if credentials.Username == "root" && credentials.Password == os.Getenv("ROOT_PW") {
+		token := strconv.FormatInt(time.Now().UnixNano(), 36)
+		s.mu.Lock()
+		s.sessions[token] = time.Now().Add(24 * time.Hour) // Validní na 24 hodin
+		s.mu.Unlock()
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"token":   token,
+		})
+	} else {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(types.StdResponse{Success: false, Message: "Invalid credentials"})
+	}
+}
+
+// Nové komentáře se rodí zde!!!
 func (s *Server) NewComment(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("[%s] %s %s\n", time.Now().Format(time.RFC3339), r.Method, r.URL.Path)
 	w.Header().Set("Content-Type", "application/json")
@@ -52,7 +179,7 @@ func (s *Server) NewComment(w http.ResponseWriter, r *http.Request) {
 	err = json.NewDecoder(bytes.NewReader(payload)).Decode(&request)
 	if err != nil {
 		fmt.Printf("Error decoding json: %v\n JSON: %s", err, string(payload))
-		w.WriteHeader(http.StatusBadRequest) // 400 is better for decode errors
+		w.WriteHeader(http.StatusBadRequest)
 		resp := types.StdResponse{Success: false, Message: fmt.Sprintf("Error decoding json: %v", err)}
 		json.NewEncoder(w).Encode(resp)
 		return
@@ -60,8 +187,20 @@ func (s *Server) NewComment(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("DEBUG: Parsed payload: %+v\n", request)
 
-	// Now we can use the original []byte payload for obm.Save
-	err = obm.Save(obm.DBS["picasi.db"], "comments", strconv.FormatInt(time.Now().Unix(), 16), payload)
+	comment := types.NewComment(request)
+
+	// Unique ID z timestampu
+	comment.ID = strconv.FormatInt(time.Now().UnixNano(), 16)
+
+	commentPayload, err := json.Marshal(comment)
+	if err != nil {
+		fmt.Printf("Error marshaling comment: %v\n", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// Využití Fabelovo OBM pro various things s pomocí Fabela
+	err = obm.Save(obm.DBS["picasi.db"], "comments", comment.ID, commentPayload)
 	if err != nil {
 		fmt.Printf("Error saving to db: %v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -75,31 +214,69 @@ func (s *Server) NewComment(w http.ResponseWriter, r *http.Request) {
 	err = json.NewEncoder(w).Encode(resp)
 }
 
+// Seznam komentářů, ukazuje jen neschované komentáře pokud user není adminem
 func (s *Server) ListComments(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("[%s] %s %s\n", time.Now().Format(time.RFC3339), r.Method, r.URL.Path)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Add("Access-Control-Allow-Origin", "*")
-	page, err := strconv.ParseInt((r.URL.Query().Get("page")), 10, 64)
-	if err != nil {
-		fmt.Printf("Error parsing page: %v\n", err)
-		w.WriteHeader(http.StatusBadRequest)
-		resp := types.StdResponse{Success: false, Message: "Invalid page parameter"}
-		json.NewEncoder(w).Encode(resp)
+	w.Header().Add("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	pagesize := 4
+
+	page, err := strconv.ParseInt((r.URL.Query().Get("page")), 10, 64)
+	if err != nil {
+		page = 1
+	}
+	idxPage := page - 1
+	if idxPage < 0 {
+		idxPage = 0
+	}
+
+	pagesize := 10
 
 	var comments []string
 	err = obm.List(obm.DBS["picasi.db"], "comments", &comments)
 	if err != nil {
 		fmt.Printf("Error listing from db: %v\n", err)
-		w.WriteHeader(http.StatusOK) // Return 200 even if bucket not found so frontend doesn't crash
-		w.Write([]byte("[]"))
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data":        []types.Comment{},
+			"page":        page,
+			"total":       0,
+			"total_pages": 0,
+		})
 		return
 	}
 
-	total := len(comments)
-	start := int(page) * pagesize
+	isAdmin := r.URL.Query().Get("admin") == "true"
+	if isAdmin && !s.IsAdmin(r) {
+		isAdmin = false
+	}
+
+	var allParsed []types.Comment
+	for _, raw := range comments {
+		var c types.Comment
+		if err := json.Unmarshal([]byte(raw), &c); err == nil {
+			allParsed = append(allParsed, c)
+		}
+	}
+
+	var filtered []types.Comment
+	for i := len(allParsed) - 1; i >= 0; i-- {
+		c := allParsed[i]
+		if isAdmin || !c.Hidden {
+			filtered = append(filtered, c)
+		}
+	}
+
+	// Stránkování
+	total := len(filtered)
+	totalPages := (total + pagesize - 1) / pagesize
+	start := int(idxPage) * pagesize
 	end := start + pagesize
 
 	if start > total {
@@ -109,15 +286,11 @@ func (s *Server) ListComments(w http.ResponseWriter, r *http.Request) {
 		end = total
 	}
 
-	paged := comments[start:end]
-
-	var parsed []types.Comment
-	for _, raw := range paged {
-		var c types.Comment
-		if err := json.Unmarshal([]byte(raw), &c); err == nil {
-			parsed = append(parsed, c)
-		}
-	}
-
-	json.NewEncoder(w).Encode(parsed)
+	paged := filtered[start:end]
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"data":        paged,
+		"page":        page,
+		"total":       total,
+		"total_pages": totalPages,
+	})
 }

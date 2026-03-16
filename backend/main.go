@@ -3,10 +3,12 @@ package main
 import (
 	"picasi/tools"
 
+	"github.com/joho/godotenv"
 	obm "github.com/tardigrade-sw/OBM"
 )
 
 func main() {
+	godotenv.Load()
 	err := obm.Init("picasi.db")
 	if err != nil {
 		panic(err)

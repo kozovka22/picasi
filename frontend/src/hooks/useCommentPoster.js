@@ -12,9 +12,7 @@ export const useCommentPoster = () => {
 
         try {
             const apiUrl = import.meta.env.VITE_API_URL
-
             const url = `${apiUrl}/api/comment/new`
-
             const payload = {
                 author: author ? author : 'Anonym',
                 content: content ? content : '',
