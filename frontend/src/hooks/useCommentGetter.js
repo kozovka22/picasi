@@ -10,7 +10,8 @@ export const useCommentGetter = (initialPage = 1) => {
     setLoading(true)
     setError(null)
     try {
-      const url = `http://localhost:8080/api/comment/list?page=${encodeURIComponent(p)}`
+      const apiUrl = import.meta.env.VITE_API_URL
+      const url = `${apiUrl}/api/comment/list?page=${encodeURIComponent(p)}`
       const res = await fetch(url)
       if (!res.ok) throw new Error('Neodpověď :(')
       const json = await res.json()
