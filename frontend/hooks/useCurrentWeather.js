@@ -19,7 +19,8 @@ export const useCurrentWeather = (query) => {
       setLoading(true)
       setError(null)
       try {
-        const url = `https://api.weatherapi.com/v1/current.json?key=b726d90bc5894460b64154330250111&q=${encodeURIComponent(qStr)}`
+        const apiKey = import.meta.env.VITE_API_KEY
+        const url = `https://api.weatherapi.com/v1/current.json?key=${apiKey}&q=${encodeURIComponent(qStr)}`
         const res = await fetch(url, { signal: controller.signal })
         if (!res.ok) throw new Error('Network response was not ok')
         const json = await res.json()

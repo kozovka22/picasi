@@ -14,8 +14,9 @@ export const useSearchPlace = (query) => {
 
     const getData = async () => {
       try {
+        const apiKey = import.meta.env.VITE_API_KEY
         const response = await fetch(
-          "https://api.weatherapi.com/v1/search.json?key=b726d90bc5894460b64154330250111&q=" + encodeURIComponent(query),
+          `https://api.weatherapi.com/v1/search.json?key=${apiKey}&q=` + encodeURIComponent(query),
           { signal: controller.signal }
         )
         if (!response.ok) throw new Error('API mě nemá ráda :(')
