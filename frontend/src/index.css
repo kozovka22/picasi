@@ -1,0 +1,147 @@
+* {
+    font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+    color: black;
+}
+#root {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-evenly;
+    flex-wrap: wrap;
+    .main1, .main2 {
+        width: 35%;
+        display:flex;
+        flex-direction: column;
+    }
+    .main2{
+        justify-content: flex-start;
+    }
+}
+.weather_card {
+    background-color: rgb(251, 250, 252);
+    border-radius: 10px;
+    margin: 50px auto;
+    padding: 30px 20px 20px 20px;
+    display: flex;
+    flex-direction: column;
+    width: 400px;
+    height: fit-content;
+    align-items: center;
+    h1 {
+        margin-bottom: 10px;
+    }
+    h2 {
+        margin-bottom: 0px;
+        font-size: large;
+    }
+    div {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+
+        img {
+            height: 60px;
+            width: 60px;
+        }
+        h3 {
+            font-size: x-large;
+            margin: 0 10px;
+        }
+    }
+    p {
+        width: 100%;
+        text-align:center;
+        margin-bottom: 10px;
+    }
+    
+}
+.place-search {
+    margin: 10px auto;
+    width: calc(80% - 22px);
+    padding: 5px 10px;    
+}
+ul {
+    list-style: none;
+    padding-left: 0;
+}
+ul li::marker {
+    display: none !important;
+}
+ul li {
+    margin: 5px 10px !important;
+}
+#results ul {
+    margin: 0 20px;
+    list-style-type: none;
+}
+#results ul li::marker {
+    display: none;
+}
+.comment-input {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    .form-input {
+        display: flex;
+        flex-direction: column;
+        width: 80%;
+        align-items: center;
+        input, textarea {
+            padding: 5px 10px;
+            width: calc(100% - 22px);
+            margin: 10px 0 0 0
+        }
+        button {
+            width: 100%;
+            padding: 5px 10px;
+            background-color: rgb(251, 250, 252);
+            margin: 0 0 15px 0;
+        }
+    }
+}
+.paging {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    width: 100%;
+    button {
+        padding: 4px 7px 3px 7px;
+        background-color: rgb(251, 250, 252);
+    }
+}
+.comment-card {
+    border-radius: 10px;
+    background-color: rgb(251, 250, 252);
+    margin: 0;
+    width: calc(100%-60px);
+    padding: 20px 30px;
+    .comment-data {
+        display: flex;
+        flex-direction: column;
+        .comment-weather {
+            display: flex;
+            flex-direction: row;
+            margin-bottom: 20px;
+            img {
+                height:60px;
+                width:60px;
+                margin-right: 20px;
+            }
+            .comment-afterImage {
+                display: flex;
+                flex-direction: row;
+                justify-content: space-between;
+                width: 80%;
+                align-items: center;
+                div {
+                    display: flex;
+                    flex-direction: column;
+                }
+            }
+        }
+    }
+}
