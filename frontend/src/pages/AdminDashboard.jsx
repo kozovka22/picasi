@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import CommentSection from '../components/CommentSection.jsx';
 import { useCommentGetter } from '../hooks/useCommentGetter.js';
 
@@ -32,8 +33,11 @@ export default function AdminDashboard() {
 
   return (
     <div className="admin-dashboard">
-      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem' }}>
-        <h1>Admin Dashboard</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', borderBottom: '1px solid #ddd' }}>
+        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+          <h1>Admin Dashboard</h1>
+          <Link to="/admin/logs" style={{ textDecoration: 'none', color: '#007bff', fontWeight: 'bold' }}>Zobrazit logy</Link>
+        </div>
         <button onClick={logout}>Odhlásit se</button>
       </div>
       <CommentSection 

@@ -51,6 +51,7 @@ func (s *Server) Serve(addr string) error {
 	http.HandleFunc("/api/comment/list", s.ListComments)
 	http.HandleFunc("/api/comment/toggle-hide", s.ToggleHideComment)
 	http.HandleFunc("/api/login", s.Login)
+	http.HandleFunc("/api/logs", s.ListLogs)
 
 	fmt.Printf("Listening on %s", addr)
 	return http.ListenAndServe(addr, nil)
@@ -70,6 +71,13 @@ func (s *Server) ToggleHideComment(w http.ResponseWriter, r *http.Request) {
 
 	if !s.IsAdmin(r) {
 		fmt.Printf("DEBUG: Auth failed for %s. Header: %s\n", r.URL.Path, r.Header.Get("Authorization"))
+
+		// Neautorizované
+		logEntry := types.NewLog("unauthorized", "UNAUTHORIZED_TOGGLE", fmt.Sprintf("Unauthorized attempt to hide/show comment at %s (IP: %s)", r.URL.Path, r.RemoteAddr), nil)
+		logID := strconv.FormatInt(time.Now().UnixNano(), 16)
+		logPayload, _ := json.Marshal(logEntry)
+		obm.Save(obm.DBS["picasi.db"], "logs", logID, logPayload)
+
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
@@ -110,6 +118,16 @@ func (s *Server) ToggleHideComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Logování
+	action := "HIDE"
+	if !comment.Hidden {
+		action = "UNHIDE"
+	}
+	logEntry := types.NewLog("root", action, fmt.Sprintf("%s comment %s", action, id), &comment)
+	logID := strconv.FormatInt(time.Now().UnixNano(), 16)
+	logPayload, _ := json.Marshal(logEntry)
+	obm.Save(obm.DBS["picasi.db"], "logs", logID, logPayload)
+
 	fmt.Printf("DEBUG: Successfully toggled comment ID %s to hidden=%v\n", id, comment.Hidden)
 	json.NewEncoder(w).Encode(types.StdResponse{Success: true, Message: "Toggled status"})
 }
@@ -144,11 +162,23 @@ func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 		s.sessions[token] = time.Now().Add(24 * time.Hour) // Validní na 24 hodin
 		s.mu.Unlock()
 
+		// Logování LOGIN
+		logEntry := types.NewLog("root", "LOGIN", "Admin login successful", nil)
+		logID := strconv.FormatInt(time.Now().UnixNano(), 16)
+		logPayload, _ := json.Marshal(logEntry)
+		obm.Save(obm.DBS["picasi.db"], "logs", logID, logPayload)
+
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": true,
 			"token":   token,
 		})
 	} else {
+		// Vemeno zapomnělo heslo lol
+		logEntry := types.NewLog(credentials.Username, "FAILED_LOGIN", fmt.Sprintf("Failed login attempt from %s", r.RemoteAddr), nil)
+		logID := strconv.FormatInt(time.Now().UnixNano(), 16)
+		logPayload, _ := json.Marshal(logEntry)
+		obm.Save(obm.DBS["picasi.db"], "logs", logID, logPayload)
+
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(types.StdResponse{Success: false, Message: "Invalid credentials"})
 	}
@@ -287,6 +317,76 @@ func (s *Server) ListComments(w http.ResponseWriter, r *http.Request) {
 	}
 
 	paged := filtered[start:end]
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"data":        paged,
+		"page":        page,
+		"total":       total,
+		"total_pages": totalPages,
+	})
+}
+
+// ListLogs vrací seznam logů pro administrátora
+func (s *Server) ListLogs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Add("Access-Control-Allow-Origin", "*")
+	w.Header().Add("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	// Pouze pro adminy
+	if !s.IsAdmin(r) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	page, _ := strconv.ParseInt(r.URL.Query().Get("page"), 10, 64)
+	if page < 1 {
+		page = 1
+	}
+	pageSize := 20
+
+	var logsRaw []string
+	err := obm.List(obm.DBS["picasi.db"], "logs", &logsRaw)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data":        []types.Log{},
+			"page":        page,
+			"total":       0,
+			"total_pages": 0,
+		})
+		return
+	}
+
+	var allLogs []types.Log
+	for _, raw := range logsRaw {
+		var l types.Log
+		if err := json.Unmarshal([]byte(raw), &l); err == nil {
+			allLogs = append(allLogs, l)
+		}
+	}
+
+	// Nejdůležitější logy nahoře (reverse order)
+	for i, j := 0, len(allLogs)-1; i < j; i, j = i+1, j-1 {
+		allLogs[i], allLogs[j] = allLogs[j], allLogs[i]
+	}
+
+	total := len(allLogs)
+	totalPages := (total + pageSize - 1) / pageSize
+	start := int(page-1) * pageSize
+	end := start + pageSize
+
+	if start > total {
+		start = total
+	}
+	if end > total {
+		end = total
+	}
+
+	paged := allLogs[start:end]
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"data":        paged,
 		"page":        page,

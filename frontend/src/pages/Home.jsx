@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useDebounce } from '../hooks/useDebounce.js'
 import { useSearchPlace } from '../hooks/useSearchPlace.js'
 import { useCurrentWeather } from '../hooks/useCurrentWeather.js'
@@ -52,6 +53,9 @@ export default function Home() {
   }
 return (
     <>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 20px' }}>
+        <Link to="/login" style={{ fontSize: '0.8rem', color: '#666', textDecoration: 'none' }}>Admin Login</Link>
+      </div>
       <div className="main1">
         <input className="place-search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Vyber své vegetiště..." />
         <PlaceList places={places} selectedPlace={selectedPlace} onSelect={handleSelectPlace} query={query} />
